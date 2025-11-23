@@ -1,4 +1,5 @@
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage'; // Veri kaydı için eklendi
 import { useEffect, useRef, useState } from 'react';
 import { Alert, AppState, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
@@ -42,13 +43,44 @@ export default function HomeScreen() {
       interval = setInterval(() => {
         setTimeLeft(timeLeft => timeLeft - 1);
       }, 1000);
-    } else if (timeLeft === 0) {
+    } else if (timeLeft === 0 && isActive) {  
       // Süre bitti
       setIsActive(false);
-      Alert.alert("Tebrikler!", "Odaklanma seansı tamamlandı.");
+      saveSession(); // KAYDETME FONKSİYONU
+      Alert.alert("Tebrikler!", "Odaklanma seansı tamamlandı ve kaydedildi.");
     }
     return () => clearInterval(interval);
   }, [isActive, timeLeft]);
+
+
+// --- VERİ KAYDETME FONKSİYONU (YENİ) ---
+  const saveSession = async () => {
+    try {
+      // Kaydedilecek veri objesi
+      const newSession = {
+        id: Date.now(), // Benzersiz ID
+        date: new Date().toISOString(), // Tarih
+        duration: 25, // Dakika cinsinden (Sabit 25 dk şimdilik)
+        category: category,
+        distractionCount: distractionCount
+      };
+
+      // Mevcut verileri oku
+      const existingSessions = await AsyncStorage.getItem('sessions');
+      let sessions = existingSessions ? JSON.parse(existingSessions) : [];
+
+      // Yeni veriyi ekle
+      sessions.push(newSession);
+
+      // Tekrar kaydet
+      await AsyncStorage.setItem('sessions', JSON.stringify(sessions));
+      console.log("Seans kaydedildi:", newSession);
+      
+    } catch (e) {
+      console.error("Kaydetme hatası:", e);
+      Alert.alert("Hata", "Veri kaydedilemedi.");
+    }
+  };
 
   // --- YARDIMCI FONKSİYONLAR ---
   // Saniyeyi MM:SS formatına çevirir
