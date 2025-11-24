@@ -5,7 +5,7 @@ import { Alert, AppState, ScrollView, StyleSheet, Text, TouchableOpacity, View }
 
 export default function HomeScreen() {
   // --- STATE TANIMLARI ---
-  const [timeLeft, setTimeLeft] = useState(25 * 60); // 25 dakika (saniye cinsinden)
+  const [timeLeft, setTimeLeft] = useState(1 * 60); // 25 dakika (saniye cinsinden)
   const [isActive, setIsActive] = useState(false); // Sayaç çalışıyor mu?
   const [category, setCategory] = useState('Kodlama'); // Varsayılan kategori
   const [distractionCount, setDistractionCount] = useState(0); // Dikkat dağınıklığı sayısı
@@ -60,7 +60,7 @@ export default function HomeScreen() {
       const newSession = {
         id: Date.now(), // Benzersiz ID
         date: new Date().toISOString(), // Tarih
-        duration: 25, // Dakika cinsinden (Sabit 25 dk şimdilik)
+        duration: 1, // Dakika cinsinden (Sabit 25 dk şimdilik)
         category: category,
         distractionCount: distractionCount
       };

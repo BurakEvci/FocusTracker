@@ -34,7 +34,8 @@ const loadData = async () => {
     }
   };
 
-const calculateStats = (data) => {
+
+  const calculateStats = (data) => {
     // 1. Genel İstatistikler
     const totalMin = data.reduce((acc, curr) => acc + curr.duration, 0);
     const totalDis = data.reduce((acc, curr) => acc + curr.distractionCount, 0);
@@ -61,17 +62,40 @@ const calculateStats = (data) => {
     }));
     setPieData(pData);
 
-    // 3. Bar Chart Verisi (Basitçe son eklenenleri gösterelim - Geliştirilebilir)
-    // Not: Gerçek tarih kontrolü için moment.js kullanılabilir ama şimdilik basit tutuyoruz.
-    const last7Sessions = data.slice(-7).map(s => s.duration);
-    // Eğer veri yoksa boş array hatası vermemesi için
-    const cleanData = last7Sessions.length > 0 ? last7Sessions : [0];
+    // 3. Bar Chart Verisi (GÜN BAZLI GRUPLAMA - DÜZELTİLDİ)
     
+    // Son 7 günün tarihlerini oluştur (Bugün, Dün, ...)
+    const last7Days = [];
+    const labels = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD formatı
+      last7Days.push(dateStr);
+      labels.push(d.getDate().toString()); // Grafikte sadece gün numarası (örn: 23) görünsün
+    }
+
+    // Veritabanındaki verileri günlere göre topla
+    const groupedData = {};
+    data.forEach(item => {
+      // item.date formatı ISO string olduğu için split ile günü alıyoruz
+      const dateKey = item.date.split('T')[0];
+      if (groupedData[dateKey]) {
+        groupedData[dateKey] += item.duration;
+      } else {
+        groupedData[dateKey] = item.duration;
+      }
+    });
+
+    // Son 7 gün için verileri eşleştir (Veri yoksa 0 bas)
+    const chartValues = last7Days.map(day => groupedData[day] || 0);
+
     setChartData({
-      labels: ["Son 7", "Seans", "Verisi", "...", "...", "...", "Bugün"], // Statik label şimdilik
-      datasets: [{ data: cleanData }]
+      labels: labels, // Örn: ["17", "18", "19", ...]
+      datasets: [{ data: chartValues }]
     });
   };
+
 
   return (
     <ScrollView style={styles.container}>
