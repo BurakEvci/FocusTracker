@@ -8,22 +8,25 @@ const screenWidth = Dimensions.get("window").width;
 
 export default function ReportsScreen() {
   const [sessions, setSessions] = useState([]);
-  const [totalTime, setTotalTime] = useState(0);
-  const [totalDistraction, setTotalDistraction] = useState(0);
+  
+  // İstenen 3 İstatistik Verisi
+  const [totalTime, setTotalTime] = useState(0);      // Tüm Zamanlar
+  const [todayTime, setTodayTime] = useState(0);      // Bugün (YENİ EKLENDİ)
+  const [totalDistraction, setTotalDistraction] = useState(0); // Dikkat Dağınıklığı
+
   const [chartData, setChartData] = useState({
     labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
     datasets: [{ data: [0, 0, 0, 0, 0, 0, 0] }]
   });
   const [pieData, setPieData] = useState([]);
 
-  // Sayfa her görüntülendiğinde verileri çek
   useFocusEffect(
     useCallback(() => {
       loadData();
     }, [])
   );
 
-const loadData = async () => {
+  const loadData = async () => {
     try {
       const jsonValue = await AsyncStorage.getItem('sessions');
       const data = jsonValue != null ? JSON.parse(jsonValue) : [];
@@ -34,16 +37,24 @@ const loadData = async () => {
     }
   };
 
-
   const calculateStats = (data) => {
-    // 1. Genel İstatistikler
-    const totalMin = data.reduce((acc, curr) => acc + curr.duration, 0);
-    const totalDis = data.reduce((acc, curr) => acc + curr.distractionCount, 0);
+    // --- 1. GENEL İSTATİSTİKLER ---
     
-    setTotalTime(totalMin);
-    setTotalDistraction(totalDis);
+    // A. Tüm Zamanların Toplam Süresi ve Dikkat Dağınıklığı
+    const allTime = data.reduce((acc, curr) => acc + curr.duration, 0);
+    const allDistraction = data.reduce((acc, curr) => acc + curr.distractionCount, 0);
+    
+    setTotalTime(allTime);
+    setTotalDistraction(allDistraction);
 
-    // 2. Pie Chart Verisi (Kategori Dağılımı)
+    // B. Bugün Toplam Odaklanma Süresi (YENİ)
+    const todayStr = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    const todaySessions = data.filter(session => session.date.startsWith(todayStr));
+    const todayTotal = todaySessions.reduce((acc, curr) => acc + curr.duration, 0);
+    
+    setTodayTime(todayTotal);
+
+    // --- 2. PASTA GRAFİK (Kategori Dağılımı) ---
     const categories = {};
     data.forEach(session => {
       if (categories[session.category]) {
@@ -60,25 +71,30 @@ const loadData = async () => {
       legendFontColor: "#7f8c8d",
       legendFontSize: 15
     }));
-    setPieData(pData);
-
-    // 3. Bar Chart Verisi (GÜN BAZLI GRUPLAMA - DÜZELTİLDİ)
     
-    // Son 7 günün tarihlerini oluştur (Bugün, Dün, ...)
+    // Veri yoksa boş grafik hatası vermesin diye kontrol
+    if (pData.length === 0) {
+       setPieData([{ name: "Veri Yok", population: 1, color: "#bdc3c7", legendFontColor: "#7f8c8d", legendFontSize: 15 }]);
+    } else {
+       setPieData(pData);
+    }
+
+    // --- 3. ÇUBUK GRAFİK (Son 7 Günlük Dağılım) ---
     const last7Days = [];
     const labels = [];
+    
     for (let i = 6; i >= 0; i--) {
       const d = new Date();
       d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0]; // YYYY-MM-DD formatı
+      const dateStr = d.toISOString().split('T')[0];
       last7Days.push(dateStr);
-      labels.push(d.getDate().toString()); // Grafikte sadece gün numarası (örn: 23) görünsün
+      // Label olarak sadece günü göster (Örn: 24)
+      labels.push(d.getDate().toString()); 
     }
 
-    // Veritabanındaki verileri günlere göre topla
+    // Günlere göre veriyi topla
     const groupedData = {};
     data.forEach(item => {
-      // item.date formatı ISO string olduğu için split ile günü alıyoruz
       const dateKey = item.date.split('T')[0];
       if (groupedData[dateKey]) {
         groupedData[dateKey] += item.duration;
@@ -87,34 +103,43 @@ const loadData = async () => {
       }
     });
 
-    // Son 7 gün için verileri eşleştir (Veri yoksa 0 bas)
     const chartValues = last7Days.map(day => groupedData[day] || 0);
 
     setChartData({
-      labels: labels, // Örn: ["17", "18", "19", ...]
+      labels: labels,
       datasets: [{ data: chartValues }]
     });
   };
-
 
   return (
     <ScrollView style={styles.container}>
       <Text style={styles.header}>Raporlar & İstatistikler</Text>
 
-      {/* Özet Kartları */}
-      <View style={styles.statsRow}>
-        <View style={[styles.card, { backgroundColor: '#e8f8f5' }]}>
-          <Text style={styles.cardTitle}>Toplam Süre</Text>
-          <Text style={[styles.cardValue, { color: '#1abc9c' }]}>{totalTime} dk</Text>
+      {/* İstatistik Kartları - ÖDEV GEREKSİNİMİNE GÖRE GÜNCELLENDİ */}
+      <View style={styles.statsContainer}>
+        
+        {/* 1. Kart: Bugün */}
+        <View style={[styles.card, { backgroundColor: '#d4efdf' }]}>
+          <Text style={styles.cardTitle}>Bugün</Text>
+          <Text style={[styles.cardValue, { color: '#27ae60' }]}>{todayTime} dk</Text>
         </View>
-        <View style={[styles.card, { backgroundColor: '#fdedec' }]}>
-          <Text style={styles.cardTitle}>Dikkat Dağınıklığı</Text>
-          <Text style={[styles.cardValue, { color: '#e74c3c' }]}>{totalDistraction}</Text>
+
+        {/* 2. Kart: Tüm Zamanlar */}
+        <View style={[styles.card, { backgroundColor: '#d6eaf8' }]}>
+          <Text style={styles.cardTitle}>Toplam</Text>
+          <Text style={[styles.cardValue, { color: '#2980b9' }]}>{totalTime} dk</Text>
         </View>
+
+        {/* 3. Kart: Dikkat Dağınıklığı */}
+        <View style={[styles.card, { backgroundColor: '#fadbd8' }]}>
+          <Text style={styles.cardTitle}>Dağılma</Text>
+          <Text style={[styles.cardValue, { color: '#c0392b' }]}>{totalDistraction}</Text>
+        </View>
+
       </View>
 
       {/* Grafik 1: Bar Chart */}
-      <Text style={styles.chartTitle}>Son Odaklanma Süreleri (dk)</Text>
+      <Text style={styles.chartTitle}>Son 7 Gün Odaklanma (dk)</Text>
       <BarChart
         data={chartData}
         width={screenWidth - 40}
@@ -146,9 +171,8 @@ const loadData = async () => {
         absolute
       />
       
-      {/* Veri yoksa uyarı */}
       {sessions.length === 0 && (
-        <Text style={styles.noDataText}>Henüz kaydedilmiş bir odaklanma seansı yok.</Text>
+        <Text style={styles.noDataText}>Henüz veri bulunmuyor.</Text>
       )}
     </ScrollView>
   );
@@ -157,10 +181,13 @@ const loadData = async () => {
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, backgroundColor: '#fff' },
   header: { fontSize: 22, fontWeight: 'bold', marginBottom: 20, color: '#2c3e50' },
-  statsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
-  card: { width: '48%', padding: 20, borderRadius: 15, alignItems: 'center' },
-  cardTitle: { fontSize: 14, color: '#7f8c8d', marginBottom: 5 },
-  cardValue: { fontSize: 28, fontWeight: 'bold' },
+  
+  // Kartlar için yeni düzen
+  statsContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 25 },
+  card: { width: '30%', paddingVertical: 15, borderRadius: 10, alignItems: 'center', justifyContent: 'center' },
+  cardTitle: { fontSize: 12, color: '#7f8c8d', marginBottom: 5, fontWeight: '600' },
+  cardValue: { fontSize: 20, fontWeight: 'bold' },
+
   chartTitle: { fontSize: 18, fontWeight: 'bold', marginTop: 10, marginBottom: 10, color: '#34495e' },
   chart: { marginVertical: 8, borderRadius: 16 },
   noDataText: { textAlign: 'center', marginTop: 20, color: '#95a5a6', fontStyle: 'italic' }
