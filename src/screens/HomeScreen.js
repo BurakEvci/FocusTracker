@@ -1,5 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
@@ -7,6 +8,7 @@ import {
   Keyboard,
   Modal,
   ScrollView,
+  StatusBar,
   StyleSheet,
   Text,
   TextInput,
@@ -15,37 +17,28 @@ import {
 } from 'react-native';
 
 export default function HomeScreen() {
-  // --- STATE TANIMLARI ---
   const [timeLeft, setTimeLeft] = useState(25 * 60); 
   const [isActive, setIsActive] = useState(false); 
   const [category, setCategory] = useState('Kodlama'); 
   const [distractionCount, setDistractionCount] = useState(0); 
   
-  // Süre Ayarlama State'leri (YENİ)
   const [modalVisible, setModalVisible] = useState(false);
   const [customMinutes, setCustomMinutes] = useState('25');
   
   const appState = useRef(AppState.currentState); 
 
-  // --- APP STATE DİNLEYİCİSİ ---
   useEffect(() => {
     const subscription = AppState.addEventListener('change', nextAppState => {
-      if (appState.current.match(/inactive|background/) && nextAppState === 'active') {
-        console.log('Uygulama ön plana geldi');
-      } else if (nextAppState === 'background' && isActive) {
+      if (nextAppState === 'background' && isActive) {
         setIsActive(false);
         setDistractionCount(prev => prev + 1); 
-        Alert.alert("Dikkat Dağınıklığı!", "Uygulamadan çıktığın için sayacı durdurduk.");
+        Alert.alert("Odak Kaybı!", "Uygulamadan çıktığın için sayaç durdu.");
       }
       appState.current = nextAppState;
     });
-
-    return () => {
-      subscription.remove();
-    };
+    return () => subscription.remove();
   }, [isActive]);
 
-  // --- ZAMANLAYICI MANTIĞI ---
   useEffect(() => {
     let interval = null;
     if (isActive && timeLeft > 0) {
@@ -55,19 +48,14 @@ export default function HomeScreen() {
     } else if (timeLeft === 0 && isActive) {
       setIsActive(false);
       saveSession(); 
-      Alert.alert("Tebrikler!", "Odaklanma seansı tamamlandı ve kaydedildi.");
+      Alert.alert("Harika!", "Seans tamamlandı.");
     }
     return () => clearInterval(interval);
   }, [isActive, timeLeft]);
 
-  // --- VERİ KAYDETME ---
   const saveSession = async () => {
     try {
-      // Kaydedilecek süre, kullanıcının ayarladığı (customMinutes) veya o anki sayaç başlangıcı olmalı
-      // Ancak basitlik adına o anki session süresini hesaplayalım:
-      // Burada kullanıcı 40 dk seçtiyse raporlara 40 dk olarak geçmeli.
       const durationMin = parseInt(customMinutes) || 25;
-
       const newSession = {
         id: Date.now(),
         date: new Date().toISOString(),
@@ -75,238 +63,148 @@ export default function HomeScreen() {
         category: category,
         distractionCount: distractionCount
       };
-
       const existingSessions = await AsyncStorage.getItem('sessions');
       let sessions = existingSessions ? JSON.parse(existingSessions) : [];
       sessions.push(newSession);
       await AsyncStorage.setItem('sessions', JSON.stringify(sessions));
-      
-    } catch (e) {
-      console.error("Kaydetme hatası:", e);
-    }
+    } catch (e) { console.error(e); }
   };
 
-  // --- SÜRE DEĞİŞTİRME FONKSİYONLARI (YENİ) ---
   const handleTimeChange = () => {
     const minutes = parseInt(customMinutes);
-    if (!minutes || minutes <= 0) {
-      Alert.alert("Hata", "Lütfen geçerli bir süre giriniz.");
-      return;
-    }
+    if (!minutes || minutes <= 0) return;
     setTimeLeft(minutes * 60);
     setModalVisible(false);
     Keyboard.dismiss();
   };
 
   const openModal = () => {
-    if (isActive) {
-      Alert.alert("Uyarı", "Süreyi değiştirmek için önce sayacı durdurmalısın.");
-      return;
-    }
+    if (isActive) { Alert.alert("Uyarı", "Sayacı durdurmalısın."); return; }
     setModalVisible(true);
   };
 
-  // --- YARDIMCI FONKSİYONLAR ---
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins < 10 ? '0' + mins : mins}:${secs < 10 ? '0' + secs : secs}`;
   };
 
-  const toggleTimer = () => {
-    setIsActive(!isActive);
-  };
-
   const resetTimer = () => {
     setIsActive(false);
-    // Sıfırlandığında ayarlanan süreye geri dönsün
     const minutes = parseInt(customMinutes) || 25;
     setTimeLeft(minutes * 60);
     setDistractionCount(0);
   };
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      <Text style={styles.headerTitle}>Odaklanma Modu</Text>
-
-      {/* Kategori Seçimi */}
-      <View style={styles.categoryContainer}>
-        <Text style={styles.label}>Kategori Seç:</Text>
-        <View style={styles.categoryButtons}>
+    <View style={styles.container}>
+      <StatusBar barStyle="light-content" />
+      
+      {/* Üst Kısım: Kategori Seçici */}
+      <View style={styles.headerContainer}>
+        <Ionicons name="book-outline" size={24} color="#00f2ff" />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
           {['Kodlama', 'Ders', 'Kitap', 'Proje'].map((cat) => (
             <TouchableOpacity 
               key={cat} 
-              style={[styles.catButton, category === cat && styles.catButtonActive]}
               onPress={() => !isActive && setCategory(cat)}
             >
               <Text style={[styles.catText, category === cat && styles.catTextActive]}>{cat}</Text>
             </TouchableOpacity>
           ))}
-        </View>
+        </ScrollView>
       </View>
 
-      {/* Sayaç Göstergesi - TIKLANABİLİR YAPILDI */}
-      <TouchableOpacity onPress={openModal} style={styles.timerContainer}>
-        <Text style={styles.timerText}>{formatTime(timeLeft)}</Text>
-        <Text style={styles.statusText}>
-          {isActive ? 'Odaklanılıyor...' : 'Süreyi ayarlamak için tıkla'}
-        </Text>
-        {!isActive && <Ionicons name="create-outline" size={24} color="#3498db" style={{marginTop: 5}} />}
+      <Text style={styles.greeting}>Hazır mısın?</Text>
+      <Text style={styles.subGreeting}>Seansını planla ve odaklan.</Text>
+
+      {/* SAYAÇ DAİRESİ */}
+      <TouchableOpacity onPress={openModal} style={styles.timerWrapper}>
+        <LinearGradient
+          colors={isActive ? ['#00f2ff', '#00c6ff'] : ['#2c3e50', '#000000']}
+          style={styles.timerCircle}
+        >
+          <View style={styles.innerCircle}>
+            <Text style={styles.timerText}>{formatTime(timeLeft)}</Text>
+            <Text style={styles.statusText}>{isActive ? 'DAKİKA KALIYOR' : 'AYARLAMAK İÇİN BAS'}</Text>
+          </View>
+        </LinearGradient>
       </TouchableOpacity>
 
-      {/* İstatistik Özeti */}
-      <View style={styles.statsContainer}>
-        <View style={styles.statItem}>
-          <Ionicons name="alert-circle-outline" size={24} color="#e74c3c" />
-          <Text style={styles.statValue}>{distractionCount}</Text>
-          <Text style={styles.statLabel}>Dikkat Dağınıklığı</Text>
-        </View>
-      </View>
+      {/* İstatistik */}
+      {distractionCount > 0 && (
+         <View style={styles.alertBox}>
+           <Ionicons name="alert-circle" size={20} color="#ff0055" />
+           <Text style={styles.alertText}>{distractionCount} Kez Dağıldın</Text>
+         </View>
+      )}
 
-      {/* Kontrol Butonları */}
+      {/* Butonlar */}
       <View style={styles.controls}>
-        <TouchableOpacity style={styles.mainButton} onPress={toggleTimer}>
-          <Ionicons name={isActive ? "pause" : "play"} size={32} color="white" />
-          <Text style={styles.mainButtonText}>{isActive ? "Duraklat" : "Başlat"}</Text>
+        <TouchableOpacity onPress={() => setIsActive(!isActive)}>
+          <LinearGradient
+            colors={isActive ? ['#ff9966', '#ff5e62'] : ['#00f2ff', '#00c6ff']}
+            style={styles.mainButton}
+          >
+            <Ionicons name={isActive ? "pause" : "play"} size={32} color="#121212" />
+          </LinearGradient>
         </TouchableOpacity>
 
-        <TouchableOpacity style={[styles.mainButton, styles.resetButton]} onPress={resetTimer}>
-          <Ionicons name="refresh" size={32} color="white" />
-          <Text style={styles.mainButtonText}>Sıfırla</Text>
+        <TouchableOpacity onPress={resetTimer} style={styles.smallButton}>
+           <Ionicons name="refresh" size={24} color="#555" />
         </TouchableOpacity>
       </View>
 
-      {/* --- SÜRE AYARLAMA MODALI (YENİ) --- */}
-      <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
+      {/* MODAL */}
+      <Modal animationType="fade" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalOverlay}>
           <View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Süre Ayarla (Dakika)</Text>
-            
-            <TextInput
-              style={styles.input}
-              onChangeText={setCustomMinutes}
-              value={customMinutes}
-              keyboardType="numeric"
-              maxLength={3}
-            />
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.cancelButton]} 
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.textStyle}>İptal</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.modalButton, styles.saveButton]} 
-                onPress={handleTimeChange}
-              >
-                <Text style={styles.textStyle}>Kaydet</Text>
-              </TouchableOpacity>
-            </View>
+            <Text style={styles.modalTitle}>Süre (Dakika)</Text>
+            <TextInput style={styles.input} onChangeText={setCustomMinutes} value={customMinutes} keyboardType="numeric" maxLength={3} />
+            <TouchableOpacity style={styles.saveButton} onPress={handleTimeChange}>
+               <Text style={styles.saveButtonText}>TAMAM</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
-
-    </ScrollView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, padding: 20, backgroundColor: '#fff', alignItems: 'center' },
-  headerTitle: { fontSize: 24, fontWeight: 'bold', color: '#2c3e50', marginBottom: 20, marginTop: 10 },
-  categoryContainer: { width: '100%', marginBottom: 30 },
-  label: { fontSize: 16, marginBottom: 10, color: '#7f8c8d' },
-  categoryButtons: { flexDirection: 'row', justifyContent: 'space-around', flexWrap: 'wrap' },
-  catButton: { paddingVertical: 8, paddingHorizontal: 16, borderRadius: 20, backgroundColor: '#ecf0f1', margin: 5 },
-  catButtonActive: { backgroundColor: '#3498db' },
-  catText: { color: '#7f8c8d' },
-  catTextActive: { color: 'white', fontWeight: 'bold' },
+  container: { flex: 1, backgroundColor: '#121212', alignItems: 'center', paddingTop: 60 },
   
-  // Timer Container Güncellendi
-  timerContainer: { 
-    alignItems: 'center', marginBottom: 30, padding: 30, 
-    borderRadius: 200, borderWidth: 5, borderColor: '#3498db', 
-    width: 250, height: 250, justifyContent: 'center',
-    backgroundColor: '#fbfbfb' // Hafif arka plan
+  headerContainer: { 
+    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e', 
+    padding: 10, borderRadius: 30, marginBottom: 30, width: '90%' 
   },
-  timerText: { fontSize: 48, fontWeight: 'bold', color: '#2c3e50' },
-  statusText: { fontSize: 14, color: '#7f8c8d', marginTop: 5 },
-  
-  statsContainer: { flexDirection: 'row', marginBottom: 30 },
-  statItem: { alignItems: 'center', backgroundColor: '#fadbd8', padding: 15, borderRadius: 10, minWidth: 150 },
-  statValue: { fontSize: 24, fontWeight: 'bold', color: '#c0392b' },
-  statLabel: { fontSize: 12, color: '#c0392b' },
-  controls: { flexDirection: 'row', justifyContent: 'space-around', width: '100%' },
-  mainButton: { backgroundColor: '#2ecc71', flexDirection: 'row', alignItems: 'center', padding: 15, borderRadius: 10, width: 140, justifyContent: 'center' },
-  resetButton: { backgroundColor: '#95a5a6' },
-  mainButtonText: { color: 'white', fontWeight: 'bold', fontSize: 18, marginLeft: 10 },
+  catScroll: { marginLeft: 10 },
+  catText: { color: '#555', fontSize: 16, marginRight: 20, fontWeight: '600' },
+  catTextActive: { color: '#fff' },
 
-  // --- MODAL STYLES (YENİ) ---
-  modalOverlay: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: 'rgba(0,0,0,0.5)'
+  greeting: { fontSize: 32, fontWeight: 'bold', color: '#fff' },
+  subGreeting: { fontSize: 16, color: '#777', marginBottom: 40 },
+
+  timerWrapper: { marginBottom: 40 },
+  timerCircle: { width: 280, height: 280, borderRadius: 140, padding: 3, justifyContent: 'center', alignItems: 'center' },
+  innerCircle: { 
+    width: 270, height: 270, borderRadius: 135, backgroundColor: '#121212', 
+    justifyContent: 'center', alignItems: 'center', borderWidth: 10, borderColor: '#1c1c1e' 
   },
-  modalView: {
-    margin: 20,
-    backgroundColor: "white",
-    borderRadius: 20,
-    padding: 35,
-    alignItems: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
-    width: '80%'
-  },
-  modalTitle: {
-    marginBottom: 15,
-    textAlign: "center",
-    fontSize: 20,
-    fontWeight: 'bold'
-  },
-  input: {
-    height: 50,
-    width: '100%',
-    margin: 12,
-    borderWidth: 1,
-    padding: 10,
-    borderRadius: 10,
-    borderColor: '#ddd',
-    fontSize: 24,
-    textAlign: 'center'
-  },
-  modalButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    width: '100%',
-    marginTop: 10
-  },
-  modalButton: {
-    borderRadius: 10,
-    padding: 10,
-    elevation: 2,
-    width: '45%',
-    alignItems: 'center'
-  },
-  saveButton: {
-    backgroundColor: "#3498db",
-  },
-  cancelButton: {
-    backgroundColor: "#95a5a6",
-  },
-  textStyle: {
-    color: "white",
-    fontWeight: "bold",
-    textAlign: "center"
-  }
+  timerText: { fontSize: 64, fontWeight: 'bold', color: '#fff', letterSpacing: 2 },
+  statusText: { color: '#555', fontSize: 12, marginTop: 5, letterSpacing: 1 },
+
+  alertBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 0, 85, 0.2)', padding: 10, borderRadius: 10, marginBottom: 20 },
+  alertText: { color: '#ff0055', marginLeft: 10, fontWeight: 'bold' },
+
+  controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
+  mainButton: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginRight: 20 },
+  smallButton: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#1c1c1e', justifyContent: 'center', alignItems: 'center' },
+
+  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: 'rgba(0,0,0,0.8)' },
+  modalView: { backgroundColor: "#1c1c1e", borderRadius: 20, padding: 30, alignItems: "center", width: '80%' },
+  modalTitle: { color: "#fff", fontSize: 18, marginBottom: 15 },
+  input: { backgroundColor: '#333', color: '#fff', width: '100%', borderRadius: 10, padding: 15, fontSize: 24, textAlign: 'center', marginBottom: 20 },
+  saveButton: { backgroundColor: "#00f2ff", borderRadius: 10, padding: 15, width: '100%', alignItems: 'center' },
+  saveButtonText: { color: "#000", fontWeight: 'bold' }
 });
