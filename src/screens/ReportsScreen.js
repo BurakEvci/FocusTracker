@@ -1,10 +1,10 @@
-import { Ionicons } from '@expo/vector-icons'; // İkon için
+import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { useCallback, useState } from 'react';
 import { Alert, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BarChart, PieChart } from 'react-native-chart-kit';
+import StatCard from '../components/StatCard'; // Component yapısını koruyoruz
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -29,7 +29,8 @@ export default function ReportsScreen() {
   const loadData = async () => {
     try {
       const jsonValue = await AsyncStorage.getItem('sessions');
-      const data = jsonValue != null ? JSON.parse(jsonValue) : [];
+      // Veriyi ters çevir (reverse) ki en son yapılan en üstte gözüksün
+      const data = jsonValue != null ? JSON.parse(jsonValue).reverse() : [];
       setSessions(data);
       calculateStats(data);
     } catch (e) {
@@ -37,7 +38,6 @@ export default function ReportsScreen() {
     }
   };
 
-  // --- YENİ: VERİLERİ SİLME FONKSİYONU ---
   const clearData = async () => {
     Alert.alert(
       "Verileri Sıfırla",
@@ -51,11 +51,9 @@ export default function ReportsScreen() {
             try {
               await AsyncStorage.removeItem('sessions');
               setSessions([]);
-              calculateStats([]); // Grafikleri sıfırla
+              calculateStats([]); 
               Alert.alert("Başarılı", "Tüm veriler temizlendi.");
-            } catch (e) {
-              console.error("Silme hatası", e);
-            }
+            } catch (e) { console.error("Silme hatası", e); }
           }
         }
       ]
@@ -63,20 +61,18 @@ export default function ReportsScreen() {
   };
 
   const calculateStats = (data) => {
-    // Veri yoksa her şeyi sıfırla
     if (!data || data.length === 0) {
       setTotalTime(0);
       setTotalDistraction(0);
       setTodayTime(0);
       setChartData({
         labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
-        datasets: [{ data: [0, 0, 0, 0, 0, 0, 0] }]
+        datasets: [{ data: [0] }]
       });
       setPieData([{ name: "Veri Yok", population: 1, color: "#333", legendFontColor: "#777", legendFontSize: 12 }]);
       return;
     }
 
-    // 1. Genel İstatistikler
     const allTime = data.reduce((acc, curr) => acc + curr.duration, 0);
     const allDistraction = data.reduce((acc, curr) => acc + curr.distractionCount, 0);
     setTotalTime(allTime);
@@ -87,7 +83,7 @@ export default function ReportsScreen() {
     const todayTotal = todaySessions.reduce((acc, curr) => acc + curr.duration, 0);
     setTodayTime(todayTotal);
 
-    // 2. Pasta Grafik
+    // Pasta Grafik
     const categories = {};
     data.forEach(session => {
       if (categories[session.category]) {
@@ -112,7 +108,7 @@ export default function ReportsScreen() {
        setPieData(pData);
     }
 
-    // 3. Bar Grafik
+    // Bar Grafik
     const last7Days = [];
     const labels = [];
     for (let i = 6; i >= 0; i--) {
@@ -148,15 +144,20 @@ export default function ReportsScreen() {
     return `${m}dk`;
   };
 
+  // Tarih formatlayıcı (Örn: 14:30 - 24 Kas)
+  const formatDate = (isoString) => {
+    const d = new Date(isoString);
+    const time = `${d.getHours() < 10 ? '0'+d.getHours() : d.getHours()}:${d.getMinutes() < 10 ? '0'+d.getMinutes() : d.getMinutes()}`;
+    const date = `${d.getDate()}/${d.getMonth() + 1}`;
+    return `${time} (${date})`;
+  };
+
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* ÜST BAŞLIK ALANI (HEADER) */}
       <View style={styles.headerRow}>
         <Text style={styles.header}>İstatistikler</Text>
-        
-        {/* SİLME BUTONU */}
         <TouchableOpacity onPress={clearData} style={styles.clearButton}>
           <Ionicons name="trash-outline" size={24} color="#ff0055" />
         </TouchableOpacity>
@@ -165,18 +166,10 @@ export default function ReportsScreen() {
       <ScrollView showsVerticalScrollIndicator={false}>
         {/* Üst Kartlar */}
         <View style={styles.topStatsRow}>
-          <LinearGradient colors={['#232526', '#414345']} style={styles.smallCard}>
-            <Text style={styles.cardLabel}>Bugün</Text>
-            <Text style={[styles.bigNumber, { color: '#00f2ff' }]}>{todayTime} <Text style={styles.unit}>dk</Text></Text>
-          </LinearGradient>
-
-          <LinearGradient colors={['#3a1c71', '#d76d77', '#ffaf7b']} start={{x:0, y:0}} end={{x:1, y:1}} style={styles.smallCard}>
-            <Text style={[styles.cardLabel, {color: '#fff'}]}>Dikkat Dağılması</Text>
-            <Text style={[styles.bigNumber, { color: '#fff' }]}>{totalDistraction}</Text>
-          </LinearGradient>
+          <StatCard title="Bugün" value={todayTime} unit="dk" colors={['#232526', '#414345']} />
+          <StatCard title="Dikkat Dağınıklığı" value={totalDistraction} colors={['#3a1c71', '#d76d77', '#ffaf7b']} />
         </View>
 
-        {/* Geniş Kart */}
         <View style={styles.wideCard}>
           <View>
             <Text style={styles.cardLabel}>Toplam Odaklanma</Text>
@@ -188,7 +181,6 @@ export default function ReportsScreen() {
           </View>
         </View>
 
-        {/* Grafik 1 */}
         <View style={styles.chartContainer}>
           <Text style={styles.sectionTitle}>Haftalık Performans</Text>
           <BarChart
@@ -211,7 +203,6 @@ export default function ReportsScreen() {
           />
         </View>
 
-        {/* Grafik 2 */}
         <View style={styles.chartContainer}>
           <Text style={styles.sectionTitle}>Kategori Dağılımı</Text>
           <PieChart
@@ -228,6 +219,32 @@ export default function ReportsScreen() {
           />
         </View>
 
+        {/* --- YENİ EKLENEN: GEÇMİŞ LİSTESİ --- */}
+        <Text style={styles.sectionTitle}>Son Aktiviteler</Text>
+        <View style={styles.historyList}>
+          {sessions.length === 0 ? (
+             <Text style={styles.noHistoryText}>Henüz kayıt yok.</Text>
+          ) : (
+            sessions.slice(0, 5).map((item, index) => ( // Sadece son 5 tanesini göster
+              <View key={index} style={styles.historyItem}>
+                <View style={styles.historyLeft}>
+                  <Ionicons name="time-outline" size={20} color="#555" />
+                  <View style={{marginLeft: 10}}>
+                    <Text style={styles.historyCategory}>{item.category}</Text>
+                    <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
+                  </View>
+                </View>
+                <View style={styles.historyRight}>
+                  <Text style={styles.historyDuration}>{item.duration} dk</Text>
+                  {item.distractionCount > 0 && (
+                    <Text style={styles.historyDistraction}>⚠️ {item.distractionCount}</Text>
+                  )}
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
         <View style={{height: 100}} /> 
       </ScrollView>
     </View>
@@ -236,54 +253,28 @@ export default function ReportsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', padding: 20, paddingTop: 50 },
-  
-  // YENİ Header Düzeni (Başlık ve Çöp Kutusu Yan Yana)
-  headerRow: { 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
-    alignItems: 'center', 
-    marginBottom: 20 
-  },
+  headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
   header: { fontSize: 32, fontWeight: 'bold', color: '#fff' },
-  clearButton: { 
-    padding: 10, 
-    backgroundColor: 'rgba(255, 0, 85, 0.1)', 
-    borderRadius: 12 
-  },
-  
+  clearButton: { padding: 10, backgroundColor: 'rgba(255, 0, 85, 0.1)', borderRadius: 12 },
   topStatsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 15 },
-  smallCard: { 
-    width: '48%', 
-    padding: 20, 
-    borderRadius: 20, 
-    justifyContent: 'center',
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    elevation: 8
-  },
+  wideCard: { backgroundColor: '#1c1c1e', borderRadius: 20, padding: 20, marginBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardLabel: { color: '#a0a0a0', fontSize: 14, marginBottom: 5 },
-  bigNumber: { fontSize: 32, fontWeight: 'bold' },
-  unit: { fontSize: 16, fontWeight: 'normal', color: '#a0a0a0' },
-
-  wideCard: {
-    backgroundColor: '#1c1c1e',
-    borderRadius: 20,
-    padding: 20,
-    marginBottom: 20,
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center'
-  },
   midNumber: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-
-  chartContainer: {
-    backgroundColor: '#1c1c1e',
-    borderRadius: 20,
-    padding: 15,
-    marginBottom: 20
-  },
-  sectionTitle: { color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 15 },
+  chartContainer: { backgroundColor: '#1c1c1e', borderRadius: 20, padding: 15, marginBottom: 20 },
+  sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15, marginTop: 10 },
   chart: { borderRadius: 16, paddingRight: 35 },
+  
+  // YENİ LİSTE STİLLERİ
+  historyList: { marginBottom: 20 },
+  historyItem: { 
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    backgroundColor: '#1c1c1e', padding: 15, borderRadius: 15, marginBottom: 10
+  },
+  historyLeft: { flexDirection: 'row', alignItems: 'center' },
+  historyCategory: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  historyDate: { color: '#777', fontSize: 12 },
+  historyRight: { alignItems: 'flex-end' },
+  historyDuration: { color: '#00f2ff', fontWeight: 'bold', fontSize: 16 },
+  historyDistraction: { color: '#ff0055', fontSize: 12, marginTop: 2 },
+  noHistoryText: { color: '#555', fontStyle: 'italic' }
 });
