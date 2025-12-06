@@ -4,7 +4,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
 import { Alert, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { BarChart, PieChart } from 'react-native-chart-kit';
-import StatCard from '../components/StatCard'; // Component yapısını koruyoruz
+import StatCard from '../components/StatCard';
 
 const screenWidth = Dimensions.get("window").width;
 
@@ -38,9 +38,9 @@ export default function ReportsScreen() {
     }
   };
 
-  const clearData = async () => {
+  const clearAllData = async () => {
     Alert.alert(
-      "Verileri Sıfırla",
+      "Tümünü Sıfırla",
       "Tüm odaklanma geçmişiniz silinecek. Emin misiniz?",
       [
         { text: "İptal", style: "cancel" },
@@ -54,6 +54,40 @@ export default function ReportsScreen() {
               calculateStats([]); 
               Alert.alert("Başarılı", "Tüm veriler temizlendi.");
             } catch (e) { console.error("Silme hatası", e); }
+          }
+        }
+      ]
+    );
+  };
+
+  // --- YENİ: TEKİL SİLME FONKSİYONU ---
+  const deleteSession = async (id) => {
+    Alert.alert(
+      "Kaydı Sil",
+      "Bu seans kaydını silmek istiyor musunuz?",
+      [
+        { text: "Vazgeç", style: "cancel" },
+        { 
+          text: "Sil", 
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // Silinecek id dışındakileri filtrele
+              // Not: sessions state'i zaten ters (reverse) duruyor, orijinal sıraya sadık kalmak için:
+              // Veritabanından taze okuyup silmek en güvenlisidir.
+              const jsonValue = await AsyncStorage.getItem('sessions');
+              let originalData = jsonValue != null ? JSON.parse(jsonValue) : [];
+              
+              const filteredData = originalData.filter(item => item.id !== id);
+              
+              await AsyncStorage.setItem('sessions', JSON.stringify(filteredData));
+              
+              // Ekrana yansıt
+              const reversedData = filteredData.reverse();
+              setSessions(reversedData);
+              calculateStats(reversedData);
+              
+            } catch (e) { console.error("Tekil silme hatası", e); }
           }
         }
       ]
@@ -83,7 +117,6 @@ export default function ReportsScreen() {
     const todayTotal = todaySessions.reduce((acc, curr) => acc + curr.duration, 0);
     setTodayTime(todayTotal);
 
-    // Pasta Grafik
     const categories = {};
     data.forEach(session => {
       if (categories[session.category]) {
@@ -108,7 +141,6 @@ export default function ReportsScreen() {
        setPieData(pData);
     }
 
-    // Bar Grafik
     const last7Days = [];
     const labels = [];
     for (let i = 6; i >= 0; i--) {
@@ -144,7 +176,6 @@ export default function ReportsScreen() {
     return `${m}dk`;
   };
 
-  // Tarih formatlayıcı (Örn: 14:30 - 24 Kas)
   const formatDate = (isoString) => {
     const d = new Date(isoString);
     const time = `${d.getHours() < 10 ? '0'+d.getHours() : d.getHours()}:${d.getMinutes() < 10 ? '0'+d.getMinutes() : d.getMinutes()}`;
@@ -158,13 +189,12 @@ export default function ReportsScreen() {
       
       <View style={styles.headerRow}>
         <Text style={styles.header}>İstatistikler</Text>
-        <TouchableOpacity onPress={clearData} style={styles.clearButton}>
-          <Ionicons name="trash-outline" size={24} color="#ff0055" />
+        <TouchableOpacity onPress={clearAllData} style={styles.clearButton}>
+          <Ionicons name="trash-bin-outline" size={24} color="#ff0055" />
         </TouchableOpacity>
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Üst Kartlar */}
         <View style={styles.topStatsRow}>
           <StatCard title="Bugün" value={todayTime} unit="dk" colors={['#232526', '#414345']} />
           <StatCard title="Dikkat Dağınıklığı" value={totalDistraction} colors={['#3a1c71', '#d76d77', '#ffaf7b']} />
@@ -219,14 +249,15 @@ export default function ReportsScreen() {
           />
         </View>
 
-        {/* --- YENİ EKLENEN: GEÇMİŞ LİSTESİ --- */}
         <Text style={styles.sectionTitle}>Son Aktiviteler</Text>
         <View style={styles.historyList}>
           {sessions.length === 0 ? (
              <Text style={styles.noHistoryText}>Henüz kayıt yok.</Text>
           ) : (
-            sessions.slice(0, 5).map((item, index) => ( // Sadece son 5 tanesini göster
-              <View key={index} style={styles.historyItem}>
+            sessions.slice(0, 10).map((item) => ( // Son 10 kaydı gösterelim
+              <View key={item.id} style={styles.historyItem}>
+                
+                {/* Sol Taraf: Bilgiler */}
                 <View style={styles.historyLeft}>
                   <Ionicons name="time-outline" size={20} color="#555" />
                   <View style={{marginLeft: 10}}>
@@ -234,12 +265,17 @@ export default function ReportsScreen() {
                     <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
                   </View>
                 </View>
+                
+                {/* Sağ Taraf: Süre ve SİLME BUTONU */}
                 <View style={styles.historyRight}>
                   <Text style={styles.historyDuration}>{item.duration} dk</Text>
-                  {item.distractionCount > 0 && (
-                    <Text style={styles.historyDistraction}>⚠️ {item.distractionCount}</Text>
-                  )}
+                  
+                  {/* TEKİL SİLME BUTONU */}
+                  <TouchableOpacity onPress={() => deleteSession(item.id)} style={styles.deleteItemBtn}>
+                    <Ionicons name="close-circle" size={20} color="#fb0606ff" />
+                  </TouchableOpacity>
                 </View>
+
               </View>
             ))
           )}
@@ -264,7 +300,6 @@ const styles = StyleSheet.create({
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15, marginTop: 10 },
   chart: { borderRadius: 16, paddingRight: 35 },
   
-  // YENİ LİSTE STİLLERİ
   historyList: { marginBottom: 20 },
   historyItem: { 
     flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
@@ -273,8 +308,11 @@ const styles = StyleSheet.create({
   historyLeft: { flexDirection: 'row', alignItems: 'center' },
   historyCategory: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   historyDate: { color: '#777', fontSize: 12 },
-  historyRight: { alignItems: 'flex-end' },
-  historyDuration: { color: '#00f2ff', fontWeight: 'bold', fontSize: 16 },
-  historyDistraction: { color: '#ff0055', fontSize: 12, marginTop: 2 },
+  historyRight: { flexDirection: 'row', alignItems: 'center' },
+  historyDuration: { color: '#00f2ff', fontWeight: 'bold', fontSize: 16, marginRight: 10 },
+  
+  // Yeni Buton Stili
+  deleteItemBtn: { padding: 5 }
+  ,
   noHistoryText: { color: '#555', fontStyle: 'italic' }
 });
