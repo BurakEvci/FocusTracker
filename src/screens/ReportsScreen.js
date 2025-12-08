@@ -1,12 +1,16 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect } from '@react-navigation/native';
 import { useCallback, useState } from 'react';
-import { Alert, Dimensions, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
-import { BarChart, PieChart } from 'react-native-chart-kit';
-import StatCard from '../components/StatCard';
+import { Alert, ScrollView, StatusBar, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 
-const screenWidth = Dimensions.get("window").width;
+// --- BİLEŞENLER ---
+import CategoryPieChart from '../components/CategoryPieChart';
+import StatCard from '../components/StatCard';
+import WeeklyChart from '../components/WeeklyChart';
+import DataService from '../services/DataService';
+
+// --- YARDIMCI FONKSİYONLAR (UTILS) ---
+import { formatDate, formatHourMin } from '../utils/helpers';
 
 export default function ReportsScreen() {
   const [sessions, setSessions] = useState([]);
@@ -28,165 +32,77 @@ export default function ReportsScreen() {
 
   const loadData = async () => {
     try {
-      const jsonValue = await AsyncStorage.getItem('sessions');
-      // Veriyi ters çevir (reverse) ki en son yapılan en üstte gözüksün
-      const data = jsonValue != null ? JSON.parse(jsonValue).reverse() : [];
-      setSessions(data);
-      calculateStats(data);
-    } catch (e) {
-      console.error("Veri okuma hatası", e);
-    }
+      const data = await DataService.getSessions();
+      const reversedData = data.reverse(); 
+      setSessions(reversedData);
+      calculateStats(reversedData);
+    } catch (e) { console.error("Veri hatası", e); }
   };
 
   const clearAllData = async () => {
-    Alert.alert(
-      "Tümünü Sıfırla",
-      "Tüm odaklanma geçmişiniz silinecek. Emin misiniz?",
-      [
-        { text: "İptal", style: "cancel" },
-        { 
-          text: "Evet, Sil", 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await AsyncStorage.removeItem('sessions');
-              setSessions([]);
-              calculateStats([]); 
-              Alert.alert("Başarılı", "Tüm veriler temizlendi.");
-            } catch (e) { console.error("Silme hatası", e); }
-          }
+    Alert.alert("Tümünü Sıfırla", "Emin misiniz?", [
+      { text: "İptal", style: "cancel" },
+      { 
+        text: "Evet", style: 'destructive',
+        onPress: async () => {
+          await DataService.clearAll();
+          setSessions([]); calculateStats([]); 
+          Alert.alert("Başarılı", "Temizlendi.");
         }
-      ]
-    );
+      }
+    ]);
   };
 
-  // --- YENİ: TEKİL SİLME FONKSİYONU ---
   const deleteSession = async (id) => {
-    Alert.alert(
-      "Kaydı Sil",
-      "Bu seans kaydını silmek istiyor musunuz?",
-      [
-        { text: "Vazgeç", style: "cancel" },
-        { 
-          text: "Sil", 
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // Silinecek id dışındakileri filtrele
-              // Not: sessions state'i zaten ters (reverse) duruyor, orijinal sıraya sadık kalmak için:
-              // Veritabanından taze okuyup silmek en güvenlisidir.
-              const jsonValue = await AsyncStorage.getItem('sessions');
-              let originalData = jsonValue != null ? JSON.parse(jsonValue) : [];
-              
-              const filteredData = originalData.filter(item => item.id !== id);
-              
-              await AsyncStorage.setItem('sessions', JSON.stringify(filteredData));
-              
-              // Ekrana yansıt
-              const reversedData = filteredData.reverse();
-              setSessions(reversedData);
-              calculateStats(reversedData);
-              
-            } catch (e) { console.error("Tekil silme hatası", e); }
-          }
+    Alert.alert("Sil", "Bu kaydı silmek istiyor musunuz?", [
+      { text: "Vazgeç", style: "cancel" },
+      { 
+        text: "Sil", style: 'destructive',
+        onPress: async () => {
+          const updatedList = await DataService.deleteSession(id);
+          const reversedData = updatedList.reverse();
+          setSessions(reversedData); calculateStats(reversedData);
         }
-      ]
-    );
+      }
+    ]);
   };
 
   const calculateStats = (data) => {
     if (!data || data.length === 0) {
-      setTotalTime(0);
-      setTotalDistraction(0);
-      setTodayTime(0);
-      setChartData({
-        labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"],
-        datasets: [{ data: [0] }]
-      });
+      setTotalTime(0); setTotalDistraction(0); setTodayTime(0);
+      setChartData({ labels: ["Pzt", "Sal", "Çar", "Per", "Cum", "Cmt", "Paz"], datasets: [{ data: [0] }] });
       setPieData([{ name: "Veri Yok", population: 1, color: "#333", legendFontColor: "#777", legendFontSize: 12 }]);
       return;
     }
 
-    const allTime = data.reduce((acc, curr) => acc + curr.duration, 0);
-    const allDistraction = data.reduce((acc, curr) => acc + curr.distractionCount, 0);
-    setTotalTime(allTime);
-    setTotalDistraction(allDistraction);
-
+    setTotalTime(data.reduce((acc, curr) => acc + curr.duration, 0));
+    setTotalDistraction(data.reduce((acc, curr) => acc + curr.distractionCount, 0));
     const todayStr = new Date().toISOString().split('T')[0];
-    const todaySessions = data.filter(session => session.date.startsWith(todayStr));
-    const todayTotal = todaySessions.reduce((acc, curr) => acc + curr.duration, 0);
-    setTodayTime(todayTotal);
+    setTodayTime(data.filter(s => s.date.startsWith(todayStr)).reduce((acc, curr) => acc + curr.duration, 0));
 
+    // Pasta Grafik
     const categories = {};
-    data.forEach(session => {
-      if (categories[session.category]) {
-        categories[session.category] += session.duration;
-      } else {
-        categories[session.category] = session.duration;
-      }
-    });
-
+    data.forEach(s => { categories[s.category] = (categories[s.category] || 0) + s.duration; });
     const colors = ["#00f2ff", "#bd00ff", "#ffe600", "#ff0055", "#ffffff"];
     const pData = Object.keys(categories).map((key, index) => ({
-      name: key,
-      population: categories[key],
-      color: colors[index % colors.length],
-      legendFontColor: "#b0b0b0",
-      legendFontSize: 13
+      name: key, population: categories[key], color: colors[index % colors.length], legendFontColor: "#b0b0b0", legendFontSize: 13
     }));
+    setPieData(pData.length === 0 ? [{ name: "Veri Yok", population: 1, color: "#333", legendFontColor: "#777", legendFontSize: 12 }] : pData);
 
-    if (pData.length === 0) {
-       setPieData([{ name: "Veri Yok", population: 1, color: "#333", legendFontColor: "#777", legendFontSize: 12 }]);
-    } else {
-       setPieData(pData);
-    }
-
-    const last7Days = [];
-    const labels = [];
+    // Bar Grafik
+    const last7Days = []; const labels = [];
     for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      last7Days.push(dateStr);
-      labels.push(d.getDate().toString()); 
+      const d = new Date(); d.setDate(d.getDate() - i);
+      last7Days.push(d.toISOString().split('T')[0]); labels.push(d.getDate().toString()); 
     }
-
     const groupedData = {};
-    data.forEach(item => {
-      const dateKey = item.date.split('T')[0];
-      if (groupedData[dateKey]) {
-        groupedData[dateKey] += item.duration;
-      } else {
-        groupedData[dateKey] = item.duration;
-      }
-    });
-
-    const chartValues = last7Days.map(day => groupedData[day] || 0);
-
-    setChartData({
-      labels: labels,
-      datasets: [{ data: chartValues }]
-    });
-  };
-
-  const formatHourMin = (minutes) => {
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    if (h > 0) return `${h}sa ${m}dk`;
-    return `${m}dk`;
-  };
-
-  const formatDate = (isoString) => {
-    const d = new Date(isoString);
-    const time = `${d.getHours() < 10 ? '0'+d.getHours() : d.getHours()}:${d.getMinutes() < 10 ? '0'+d.getMinutes() : d.getMinutes()}`;
-    const date = `${d.getDate()}/${d.getMonth() + 1}`;
-    return `${time} (${date})`;
+    data.forEach(item => { const k = item.date.split('T')[0]; groupedData[k] = (groupedData[k] || 0) + item.duration; });
+    setChartData({ labels: labels, datasets: [{ data: last7Days.map(day => groupedData[day] || 0) }] });
   };
 
   return (
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
-      
       <View style={styles.headerRow}>
         <Text style={styles.header}>İstatistikler</Text>
         <TouchableOpacity onPress={clearAllData} style={styles.clearButton}>
@@ -203,6 +119,7 @@ export default function ReportsScreen() {
         <View style={styles.wideCard}>
           <View>
             <Text style={styles.cardLabel}>Toplam Odaklanma</Text>
+            {/* HELPER KULLANILDI */}
             <Text style={styles.midNumber}>{formatHourMin(totalTime)}</Text>
           </View>
           <View>
@@ -211,76 +128,34 @@ export default function ReportsScreen() {
           </View>
         </View>
 
-        <View style={styles.chartContainer}>
-          <Text style={styles.sectionTitle}>Haftalık Performans</Text>
-          <BarChart
-            data={chartData}
-            width={screenWidth - 40}
-            height={200}
-            yAxisLabel=""
-            chartConfig={{
-              backgroundColor: "transparent",
-              backgroundGradientFrom: "#1c1c1e",
-              backgroundGradientTo: "#1c1c1e",
-              decimalPlaces: 0,
-              color: (opacity = 1) => `rgba(0, 242, 255, ${opacity})`,
-              labelColor: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-              barPercentage: 0.6,
-            }}
-            style={styles.chart}
-            showBarTops={false}
-            fromZero={true}
-          />
-        </View>
-
-        <View style={styles.chartContainer}>
-          <Text style={styles.sectionTitle}>Kategori Dağılımı</Text>
-          <PieChart
-            data={pieData}
-            width={screenWidth - 20}
-            height={200}
-            chartConfig={{
-              color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-            }}
-            accessor={"population"}
-            backgroundColor={"transparent"}
-            paddingLeft={"15"}
-            absolute
-          />
-        </View>
+        <WeeklyChart data={chartData} />
+        <CategoryPieChart data={pieData} />
 
         <Text style={styles.sectionTitle}>Son Aktiviteler</Text>
         <View style={styles.historyList}>
           {sessions.length === 0 ? (
              <Text style={styles.noHistoryText}>Henüz kayıt yok.</Text>
           ) : (
-            sessions.slice(0, 10).map((item) => ( // Son 10 kaydı gösterelim
+            sessions.slice(0, 10).map((item) => (
               <View key={item.id} style={styles.historyItem}>
-                
-                {/* Sol Taraf: Bilgiler */}
                 <View style={styles.historyLeft}>
                   <Ionicons name="time-outline" size={20} color="#555" />
                   <View style={{marginLeft: 10}}>
                     <Text style={styles.historyCategory}>{item.category}</Text>
+                    {/* HELPER KULLANILDI */}
                     <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
                   </View>
                 </View>
-                
-                {/* Sağ Taraf: Süre ve SİLME BUTONU */}
                 <View style={styles.historyRight}>
                   <Text style={styles.historyDuration}>{item.duration} dk</Text>
-                  
-                  {/* TEKİL SİLME BUTONU */}
                   <TouchableOpacity onPress={() => deleteSession(item.id)} style={styles.deleteItemBtn}>
                     <Ionicons name="close-circle" size={20} color="#fb0606ff" />
                   </TouchableOpacity>
                 </View>
-
               </View>
             ))
           )}
         </View>
-
         <View style={{height: 100}} /> 
       </ScrollView>
     </View>
@@ -296,23 +171,14 @@ const styles = StyleSheet.create({
   wideCard: { backgroundColor: '#1c1c1e', borderRadius: 20, padding: 20, marginBottom: 20, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   cardLabel: { color: '#a0a0a0', fontSize: 14, marginBottom: 5 },
   midNumber: { fontSize: 20, fontWeight: 'bold', color: '#fff' },
-  chartContainer: { backgroundColor: '#1c1c1e', borderRadius: 20, padding: 15, marginBottom: 20 },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15, marginTop: 10 },
-  chart: { borderRadius: 16, paddingRight: 35 },
-  
   historyList: { marginBottom: 20 },
-  historyItem: { 
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    backgroundColor: '#1c1c1e', padding: 15, borderRadius: 15, marginBottom: 10
-  },
+  historyItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1c1c1e', padding: 15, borderRadius: 15, marginBottom: 10 },
   historyLeft: { flexDirection: 'row', alignItems: 'center' },
   historyCategory: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   historyDate: { color: '#777', fontSize: 12 },
   historyRight: { flexDirection: 'row', alignItems: 'center' },
   historyDuration: { color: '#00f2ff', fontWeight: 'bold', fontSize: 16, marginRight: 10 },
-  
-  // Yeni Buton Stili
-  deleteItemBtn: { padding: 5 }
-  ,
+  deleteItemBtn: { padding: 5 },
   noHistoryText: { color: '#555', fontStyle: 'italic' }
 });

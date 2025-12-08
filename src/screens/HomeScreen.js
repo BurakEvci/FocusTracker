@@ -1,24 +1,22 @@
 import { Ionicons } from '@expo/vector-icons';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   AppState,
   Keyboard,
-  Modal,
   ScrollView,
   StatusBar,
   StyleSheet,
   Text,
-  TextInput,
   TouchableOpacity,
   Vibration,
   View
 } from 'react-native';
-
-// --- YENİ EKLENEN KÜTÜPHANE ---
-import * as Haptics from 'expo-haptics';
+import TimeModal from '../components/TimeModal';
+import TimerCircle from '../components/TimerCircle';
+import DataService from '../services/DataService';
 
 export default function HomeScreen() {
   const [timeLeft, setTimeLeft] = useState(25 * 60); 
@@ -36,10 +34,7 @@ export default function HomeScreen() {
       if (nextAppState === 'background' && isActive) {
         setIsActive(false);
         setDistractionCount(prev => prev + 1); 
-        
-        // --- YENİ: HATA TİTREŞİMİ (Dikkat Dağınıklığı) ---
-        Vibration.vibrate([0,500,200,500])
-
+        Vibration.vibrate([0, 500, 200, 500]);
         Alert.alert("Odak Kaybı!", "Uygulamadan çıktığın için sayaç durdu.");
       }
       appState.current = nextAppState;
@@ -55,10 +50,7 @@ export default function HomeScreen() {
       }, 1000);
     } else if (timeLeft === 0 && isActive) {
       setIsActive(false);
-      
-      // --- YENİ: BAŞARI TİTREŞİMİ (Süre Bitti) ---
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      
+      Vibration.vibrate([0, 800]); 
       saveSession(); 
       Alert.alert("Harika!", "Seans tamamlandı.");
     }
@@ -75,14 +67,12 @@ export default function HomeScreen() {
         category: category,
         distractionCount: distractionCount
       };
-      const existingSessions = await AsyncStorage.getItem('sessions');
-      let sessions = existingSessions ? JSON.parse(existingSessions) : [];
-      sessions.push(newSession);
-      await AsyncStorage.setItem('sessions', JSON.stringify(sessions));
+      await DataService.addSession(newSession);      
+    
     } catch (e) { console.error(e); }
   };
 
-  const handleTimeChange = () => {
+  const handleTimeSave = () => {
     const minutes = parseInt(customMinutes);
     if (!minutes || minutes <= 0) return;
     setTimeLeft(minutes * 60);
@@ -92,29 +82,17 @@ export default function HomeScreen() {
 
   const openModal = () => {
     if (isActive) { Alert.alert("Uyarı", "Sayacı durdurmalısın."); return; }
-    
-    // YENİ: Butona basınca hafif titreşim
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
     setModalVisible(true);
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins < 10 ? '0' + mins : mins}:${secs < 10 ? '0' + secs : secs}`;
-  };
-
   const toggleTimer = () => {
-    // YENİ: Başlat/Durdur titreşimi
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsActive(!isActive);
   };
 
   const resetTimer = () => {
-    // YENİ: Sıfırlama titreşimi
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsActive(false);
     const minutes = parseInt(customMinutes) || 25;
     setTimeLeft(minutes * 60);
@@ -125,7 +103,6 @@ export default function HomeScreen() {
     <View style={styles.container}>
       <StatusBar barStyle="light-content" />
       
-      {/* Üst Kısım: Kategori Seçici */}
       <View style={styles.headerContainer}>
         <Ionicons name="book-outline" size={24} color="#00f2ff" />
         <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.catScroll}>
@@ -135,7 +112,6 @@ export default function HomeScreen() {
               onPress={() => {
                 if(!isActive) {
                    setCategory(cat);
-                   // YENİ: Seçim titreşimi
                    Haptics.selectionAsync(); 
                 }
               }}
@@ -149,20 +125,13 @@ export default function HomeScreen() {
       <Text style={styles.greeting}>Hazır mısın?</Text>
       <Text style={styles.subGreeting}>Seansını planla ve odaklan.</Text>
 
-      {/* SAYAÇ DAİRESİ */}
-      <TouchableOpacity onPress={openModal} style={styles.timerWrapper}>
-        <LinearGradient
-          colors={isActive ? ['#00f2ff', '#00c6ff'] : ['#2c3e50', '#000000']}
-          style={styles.timerCircle}
-        >
-          <View style={styles.innerCircle}>
-            <Text style={styles.timerText}>{formatTime(timeLeft)}</Text>
-            <Text style={styles.statusText}>{isActive ? 'DAKİKA KALIYOR' : 'AYARLAMAK İÇİN BAS'}</Text>
-          </View>
-        </LinearGradient>
-      </TouchableOpacity>
+      {/* MODÜLERLEŞTİRİLMİŞ SAYAÇ BİLEŞENİ */}
+      <TimerCircle 
+        timeLeft={timeLeft} 
+        isActive={isActive} 
+        onPress={openModal} 
+      />
 
-      {/* İstatistik */}
       {distractionCount > 0 && (
          <View style={styles.alertBox}>
            <Ionicons name="alert-circle" size={20} color="#ff0055" />
@@ -170,7 +139,6 @@ export default function HomeScreen() {
          </View>
       )}
 
-      {/* Butonlar */}
       <View style={styles.controls}>
         <TouchableOpacity onPress={toggleTimer}>
           <LinearGradient
@@ -186,94 +154,30 @@ export default function HomeScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* MODAL */}
-      <Modal animationType="fade" transparent={true} visible={modalVisible} onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalView}>
-            <Text style={styles.modalTitle}>Süre Seç</Text>
-            
-            {/* Hızlı Seçim Butonları */}
-            <View style={styles.quickSelectContainer}>
-              {[15, 25, 40, 60].map((min) => (
-                <TouchableOpacity 
-                  key={min} 
-                  style={[styles.quickBtn, customMinutes === min.toString() && styles.quickBtnActive]}
-                  onPress={() => {
-                    setCustomMinutes(min.toString());
-                    Haptics.selectionAsync(); // YENİ: Seçim titreşimi
-                  }}
-                >
-                  <Text style={[styles.quickBtnText, customMinutes === min.toString() && styles.quickBtnTextActive]}>{min} dk</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            
-            <Text style={styles.inputLabel}>veya manuel gir:</Text>
-            <TextInput 
-              style={styles.input} 
-              onChangeText={setCustomMinutes} 
-              value={customMinutes} 
-              keyboardType="numeric" 
-              maxLength={3} 
-              placeholderTextColor="#555"
-            />
-
-            <TouchableOpacity style={styles.saveButton} onPress={handleTimeChange}>
-               <Text style={styles.saveButtonText}>TAMAM</Text>
-            </TouchableOpacity>
-            
-            <TouchableOpacity onPress={() => setModalVisible(false)} style={{marginTop: 15}}>
-              <Text style={{color: '#777'}}>İptal</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+      {/* MODÜLERLEŞTİRİLMİŞ MODAL BİLEŞENİ */}
+      <TimeModal 
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onSave={handleTimeSave}
+        customMinutes={customMinutes}
+        setCustomMinutes={setCustomMinutes}
+      />
+      
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#121212', alignItems: 'center', paddingTop: 60 },
-  
-  headerContainer: { 
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e', 
-    padding: 10, borderRadius: 30, marginBottom: 30, width: '90%' 
-  },
+  headerContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1c1c1e', padding: 10, borderRadius: 30, marginBottom: 30, width: '90%' },
   catScroll: { marginLeft: 10 },
   catText: { color: '#555', fontSize: 16, marginRight: 20, fontWeight: '600' },
   catTextActive: { color: '#fff' },
-
   greeting: { fontSize: 32, fontWeight: 'bold', color: '#fff' },
   subGreeting: { fontSize: 16, color: '#777', marginBottom: 40 },
-
-  timerWrapper: { marginBottom: 40 },
-  timerCircle: { width: 280, height: 280, borderRadius: 140, padding: 3, justifyContent: 'center', alignItems: 'center' },
-  innerCircle: { 
-    width: 270, height: 270, borderRadius: 135, backgroundColor: '#121212', 
-    justifyContent: 'center', alignItems: 'center', borderWidth: 10, borderColor: '#1c1c1e' 
-  },
-  timerText: { fontSize: 64, fontWeight: 'bold', color: '#fff', letterSpacing: 2 },
-  statusText: { color: '#555', fontSize: 12, marginTop: 5, letterSpacing: 1 },
-
   alertBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 0, 85, 0.2)', padding: 10, borderRadius: 10, marginBottom: 20 },
   alertText: { color: '#ff0055', marginLeft: 10, fontWeight: 'bold' },
-
   controls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   mainButton: { width: 80, height: 80, borderRadius: 40, justifyContent: 'center', alignItems: 'center', marginRight: 20 },
   smallButton: { width: 50, height: 50, borderRadius: 25, backgroundColor: '#1c1c1e', justifyContent: 'center', alignItems: 'center' },
-
-  modalOverlay: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: 'rgba(0,0,0,0.85)' },
-  modalView: { backgroundColor: "#1c1c1e", borderRadius: 25, padding: 25, alignItems: "center", width: '85%', borderWidth: 1, borderColor: '#333' },
-  modalTitle: { color: "#fff", fontSize: 20, marginBottom: 20, fontWeight: 'bold' },
-
-  quickSelectContainer: { flexDirection: 'row', justifyContent: 'space-between', width: '100%', marginBottom: 20 },
-  quickBtn: { backgroundColor: '#2c2c2e', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 12, borderWidth: 1, borderColor: '#444', minWidth: 60, alignItems: 'center' },
-  quickBtnActive: { backgroundColor: 'rgba(0, 242, 255, 0.2)', borderColor: '#00f2ff' },
-  quickBtnText: { color: '#aaa', fontSize: 14, fontWeight: '600' },
-  quickBtnTextActive: { color: '#00f2ff', fontWeight: 'bold' },
-
-  inputLabel: { color: '#777', fontSize: 12, marginBottom: 5, alignSelf: 'flex-start', marginLeft: 5 },
-  input: { backgroundColor: '#2c2c2e', color: '#fff', width: '100%', borderRadius: 12, padding: 15, fontSize: 20, textAlign: 'center', marginBottom: 20, borderWidth: 1, borderColor: '#444' },
-  saveButton: { backgroundColor: "#00f2ff", borderRadius: 12, padding: 15, width: '100%', alignItems: 'center' },
-  saveButtonText: { color: "#000", fontWeight: 'bold', fontSize: 16 }
 });
