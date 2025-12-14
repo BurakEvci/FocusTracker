@@ -32,7 +32,7 @@ export default function App() {
           },
           headerTintColor: '#fff',
           headerTitleAlign: 'center',
-          headerShown: false, // Header'ı sayfa içinde yaptık, burada kapatalım
+          headerShown: false, // Header'ı sayfa içinde yaptık, burada kapatıyoruz
         })}
       >
         <Tab.Screen name="Odaklan" component={HomeScreen} />

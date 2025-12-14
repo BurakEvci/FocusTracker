@@ -112,14 +112,13 @@ export default function ReportsScreen() {
 
       <ScrollView showsVerticalScrollIndicator={false}>
         <View style={styles.topStatsRow}>
-          <StatCard title="Bugün" value={todayTime} unit="dk" colors={['#232526', '#414345']} />
-          <StatCard title="Dikkat Dağınıklığı" value={totalDistraction} colors={['#3a1c71', '#d76d77', '#ffaf7b']} />
+          <StatCard title="Bugün Toplam Odaklanma" value={todayTime} unit="dk" colors={['#232526', '#414345']} />
+          <StatCard title="Toplam Dikkat Dağınıklığı Sayısı" value={totalDistraction} colors={['#3a1c71', '#d76d77', '#ffaf7b']} />
         </View>
 
         <View style={styles.wideCard}>
           <View>
-            <Text style={styles.cardLabel}>Toplam Odaklanma</Text>
-            {/* HELPER KULLANILDI */}
+            <Text style={styles.cardLabel}>Tüm Zamanlar</Text>
             <Text style={styles.midNumber}>{formatHourMin(totalTime)}</Text>
           </View>
           <View>
@@ -146,10 +145,18 @@ export default function ReportsScreen() {
                     <Text style={styles.historyDate}>{formatDate(item.date)}</Text>
                   </View>
                 </View>
+                
                 <View style={styles.historyRight}>
-                  <Text style={styles.historyDuration}>{item.duration} dk</Text>
+                  <View style={{ alignItems: 'flex-end', marginRight: 10 }}>
+                    <Text style={styles.historyDuration}>{item.duration} dk</Text>
+                    {item.distractionCount > 0 && (
+                      <Text style={styles.distractionText}>
+                         ⚠️ {item.distractionCount} Dağılma
+                      </Text>
+                    )}
+                  </View>
                   <TouchableOpacity onPress={() => deleteSession(item.id)} style={styles.deleteItemBtn}>
-                    <Ionicons name="close-circle" size={20} color="#fb0606ff" />
+                    <Ionicons name="close-circle" size={22} color="#fb0606ff" />
                   </TouchableOpacity>
                 </View>
               </View>
@@ -180,5 +187,7 @@ const styles = StyleSheet.create({
   historyRight: { flexDirection: 'row', alignItems: 'center' },
   historyDuration: { color: '#00f2ff', fontWeight: 'bold', fontSize: 16, marginRight: 10 },
   deleteItemBtn: { padding: 5 },
-  noHistoryText: { color: '#555', fontStyle: 'italic' }
+  noHistoryText: { color: '#555', fontStyle: 'italic' },
+  distractionText: {color: '#f72525ff', fontWeight: 'bold',marginTop: 2},
+
 });

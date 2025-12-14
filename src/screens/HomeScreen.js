@@ -87,6 +87,11 @@ export default function HomeScreen() {
   };
 
   const toggleTimer = () => {
+    if (timeLeft === 0) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+      Alert.alert("Lütfen yeni bir seans başlatmak için süreyi ayarlayın veya sıfırlayın.");
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setIsActive(!isActive);
   };

@@ -3,7 +3,7 @@
 ## 1. Proje Hakkında
 **Proje Adı:** FocusTracker (Odaklanma Takibi ve Raporlama Uygulaması)
 **Teknoloji:** React Native (Expo)
-**Geliştirici:** Burak Evci
+**Geliştirici:** Burak Can Evci
 
 ### Projenin Amacı
 FocusTracker, dijital dikkat dağınıklığıyla mücadele etmek amacıyla geliştirilmiş bir mobil uygulamadır. Kullanıcıların Pomodoro tekniği veya kendi belirledikleri sürelerle odaklanma seansları yapmalarını sağlar. Uygulama, seans sırasında kullanıcının uygulamadan çıkıp çıkmadığını (dikkat dağınıklığını) takip eder ve bu verileri raporlayarak kullanıcının verimliliğini artırmayı hedefler.
@@ -54,12 +54,11 @@ Uygulama, `react-navigation` kütüphanesi kullanılarak oluşturulmuş bir **Ta
 FocusTracker/
 ├── App.js                  # Ana giriş noktası ve Navigasyon yapısı
 ├── src/
-│   ├── components/         # (Varsa) Yeniden kullanılabilir bileşenler
-│   └── screens/
-│       ├── HomeScreen.js   # Zamanlayıcı ve Seans Yönetimi Ekranı
-│       └── ReportsScreen.js# İstatistik ve Raporlama Ekranı
-├── assets/                 # Görseller ve ikonlar
-└── package.json            # Bağımlılıklar ve scriptler
+│   ├── components/         # Yeniden kullanılabilir bileşenler (Charts, Timer, vb.)
+│   ├── screens/            # Ana uygulama ekranları (HomeScreen, ReportsScreen)
+│   ├── services/           # Veritabanı ve iş mantığı (DataService.js)
+│   └── utils/              # Yardımcı fonksiyonlar ve formatlayıcılar (helpers.js)
+
 ```
 
 ### İş Akışı (Flow)
